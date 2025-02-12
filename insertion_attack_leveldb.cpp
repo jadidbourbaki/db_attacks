@@ -246,16 +246,15 @@ private:
   // adding it as a friend for convenience
   friend std::vector<std::string>
   FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
-                           int range_end, int &trials);
+                           int range_end, int &trials, const int entries);
 
-  friend const insertion_result_temp run_experiment(const int bits);
+  friend const insertion_result_temp run_experiment(const int bits,
+                                                    const int entries);
 };
-
-#define MAX_ENTRIES_CHECK 64
 
 std::vector<std::string>
 FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
-                         int range_end, int &trials) {
+                         int range_end, int &trials, const int entries) {
   std::unordered_set<size_t> unique_bits;
   std::vector<std::string> minimal_set;
   std::string filter_data;
@@ -269,11 +268,11 @@ FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
 
     std::vector<Slice> tmp_slices;
 
-    for (int j = 0; j < MAX_ENTRIES_CHECK; j++) {
+    for (int j = 0; j < entries; j++) {
       tmp_slices.push_back(Slice(key));
     }
 
-    bloom_filter.CreateFilter(&tmp_slices[0], MAX_ENTRIES_CHECK, &temp_filter);
+    bloom_filter.CreateFilter(&tmp_slices[0], entries, &temp_filter);
 
     size_t new_bits = 0;
 
@@ -296,7 +295,7 @@ FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
     minimal_set.push_back(key);
 
     tmp_slices.clear();
-    for (int j = 0; j < MAX_ENTRIES_CHECK; j++) {
+    for (int j = 0; j < entries; j++) {
       if (j < minimal_set.size()) {
         tmp_slices.push_back(Slice(minimal_set[j]));
         continue;
@@ -306,10 +305,10 @@ FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
     }
 
     filter_data.clear();
-    bloom_filter.CreateFilter(&tmp_slices[0], MAX_ENTRIES_CHECK, &filter_data);
+    bloom_filter.CreateFilter(&tmp_slices[0], entries, &filter_data);
 
     if (minimal_set.size() * bloom_filter.k_ >=
-        bloom_filter.bits_per_key_ * MAX_ENTRIES_CHECK) {
+        bloom_filter.bits_per_key_ * entries) {
       return minimal_set;
     }
   }
@@ -318,7 +317,7 @@ FindMinimalSaturatingSet(BloomFilterPolicy &bloom_filter, int range_start,
   return minimal_set;
 }
 
-const insertion_result_temp run_experiment(const int bits) {
+const insertion_result_temp run_experiment(const int bits, const int entries) {
   BloomFilterPolicy bloom_filter(bits);
   int range_start = 0, range_end = NUM_KEYS;
 
@@ -326,12 +325,12 @@ const insertion_result_temp run_experiment(const int bits) {
 
   auto start_time = std::chrono::high_resolution_clock::now();
   std::vector<std::string> result = FindMinimalSaturatingSet(
-      bloom_filter, range_start, range_end, rtn.trials);
+      bloom_filter, range_start, range_end, rtn.trials, entries);
   auto end_time = std::chrono::high_resolution_clock::now();
 
   rtn.bits = bits;
   rtn.n_hashes = bloom_filter.k_;
-  rtn.n_keys = MAX_ENTRIES_CHECK;
+  rtn.n_keys = entries;
   rtn.minimal_set_size = result.size();
   rtn.time_ms_saturation =
       std::chrono::duration_cast<std::chrono::microseconds>(end_time -
@@ -377,14 +376,15 @@ int main() {
   srand(42);
 
   // bits per key
-  auto bits_arr = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  auto bits_per_key = 1;
+  auto entries_arr = {256, 512, 1024, 2048, 4096};
   std::vector<insertion_result> results;
 
-  for (auto bits : bits_arr) {
+  for (auto entries : entries_arr) {
     std::vector<insertion_result_temp> temp_results;
 
     for (int i = 0; i < EXPERIMENT_ITERATION_COUNT; i++) {
-      temp_results.push_back(run_experiment(bits));
+      temp_results.push_back(run_experiment(bits_per_key, entries));
       std::cout << " . " << std::flush;
     }
 
